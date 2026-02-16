@@ -1,4 +1,4 @@
-# Mouse Battery Monitor 🖱️🔋
+# Mouse Battery Monitor
 
 A lightweight Windows system tray application that displays the battery level of your SteelSeries wireless mouse.
 
