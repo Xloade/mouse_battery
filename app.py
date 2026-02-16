@@ -125,10 +125,11 @@ class UniversalBatteryMonitor:
     
     def _try_steelseries_battery(self, device: Dict) -> Optional[BatteryDevice]:
         for attempt in range(3):
+            mouse = None
             try:
                 if attempt > 0:
-                    print(f"      Retry attempt {attempt}...")
-                    time.sleep(0.5)  # Wait before retry    
+                    print(f"      Retry attempt {attempt + 1}...")
+                    time.sleep(1.0)  # Wait longer before retry    
             
                 try:
                     mouse = rivalcfg.get_first_mouse()
@@ -147,31 +148,56 @@ class UniversalBatteryMonitor:
                                 print(f"      Battery level: {battery_level}%")
                                 print(f"      Charging: {is_charging}")
                                 
-                                mouse.close()
-                                
-                                return BatteryDevice(
+                                result = BatteryDevice(
                                     name=device['product'] or f"SteelSeries {device['vid']:04x}:{device['pid']:04x}",
                                     battery_level=battery_level,
                                     charging=is_charging or False,
                                     source='hid_steelseries',
                                     details=device
                                 )
-                            else:
-                                print(f"      Battery info not available (mouse may be off)")
+                                
                                 mouse.close()
+                                time.sleep(0.2)  # Give device time to release
+                                
+                                return result
+                            else:
+                                print(f"      Battery info not available, will retry...")
+                                mouse.close()
+                                time.sleep(0.5)  # Give device time to release
+                                continue  # Retry on next attempt
                         except AttributeError as e:
-                            print(f"AttributeError: {e}")
-                            mouse.close()
+                            print(f"      AttributeError: {e}")
+                            if mouse:
+                                mouse.close()
+                                time.sleep(0.5)
+                            continue  # Retry on next attempt
                         except Exception as e:
-                            print(f"Error reading battery: {e}")
-                            mouse.close()
+                            print(f"      Error reading battery: {e}")
+                            if mouse:
+                                mouse.close()
+                                time.sleep(0.5)
+                            continue  # Retry on next attempt
                     else:
-                        print(f"No mouse found by rivalcfg")
+                        print(f"      No mouse found by rivalcfg")
+                        time.sleep(0.5)
+                        continue  # Retry on next attempt
                 except Exception as e:
-                    print(f"Error calling get_first_mouse(): {e}")
+                    print(f"      Error calling get_first_mouse(): {e}")
+                    if mouse:
+                        try:
+                            mouse.close()
+                        except:
+                            pass
+                        time.sleep(0.5)
+                    continue  # Retry on next attempt
             except Exception as e:
                 print(f"      Error on attempt {attempt + 1}: {e}")
-                time.sleep(0.5)
+                if mouse:
+                    try:
+                        mouse.close()
+                    except:
+                        pass
+                time.sleep(1.0)
                 continue
             return None
 
