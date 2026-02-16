@@ -1,352 +1,354 @@
-import ctypes
-from ctypes import wintypes
-import struct
+import sys
+from typing import List, Dict, Optional
 
-# Constants
-BATTERY_SYSTEM_BATTERY = 0x80000000
-BATTERY_POWER_ON_LINE = 0x00000001
+# Check dependencies
+MISSING_DEPS = []
 
-DIGCF_PRESENT = 0x00000002
-DIGCF_DEVICEINTERFACE = 0x00000010
+try:
+    import hid
+except ImportError:
+    MISSING_DEPS.append("hidapi")
 
-GENERIC_READ = 0x80000000
-GENERIC_WRITE = 0x40000000
-FILE_SHARE_READ = 0x00000001
-FILE_SHARE_WRITE = 0x00000002
-OPEN_EXISTING = 3
+try:
+    import asyncio
+    from bleak import BleakScanner, BleakClient
+    HAS_BLEAK = True
+except ImportError:
+    HAS_BLEAK = False
+    MISSING_DEPS.append("bleak")
 
-IOCTL_BATTERY_QUERY_TAG = 0x00294040
-IOCTL_BATTERY_QUERY_INFORMATION = 0x00294044
-IOCTL_BATTERY_QUERY_STATUS = 0x0029404C
+# Windows-specific imports
+if sys.platform == 'win32':
+    import ctypes
+    from ctypes import wintypes
 
-INVALID_HANDLE_VALUE = -1
-
-# GUID Structure
-class GUID(ctypes.Structure):
-    _fields_ = [
-        ('Data1', wintypes.DWORD),
-        ('Data2', wintypes.WORD),
-        ('Data3', wintypes.WORD),
-        ('Data4', wintypes.BYTE * 8),
-    ]
-
-# GUID_DEVCLASS_BATTERY = {72CEC4C4-E325-11D0-B9C0-00A0C9057725}
-GUID_BATTERY = GUID()
-GUID_BATTERY.Data1 = 0x72CEC4C4
-GUID_BATTERY.Data2 = 0xE325
-GUID_BATTERY.Data3 = 0x11D0
-GUID_BATTERY.Data4 = (wintypes.BYTE * 8)(0xB9, 0xC0, 0x00, 0xA0, 0xC9, 0x05, 0x77, 0x25)
-
-# Structures
-class SP_DEVICE_INTERFACE_DATA(ctypes.Structure):
-    _fields_ = [
-        ('cbSize', wintypes.DWORD),
-        ('InterfaceClassGuid', GUID),
-        ('Flags', wintypes.DWORD),
-        ('Reserved', ctypes.POINTER(ctypes.c_ulong)),
-    ]
-
-class SP_DEVICE_INTERFACE_DETAIL_DATA(ctypes.Structure):
-    _fields_ = [
-        ('cbSize', wintypes.DWORD),
-        ('DevicePath', ctypes.c_wchar * 256),
-    ]
-
-class BATTERY_QUERY_INFORMATION(ctypes.Structure):
-    _fields_ = [
-        ('BatteryTag', wintypes.ULONG),
-        ('InformationLevel', wintypes.LONG),
-        ('AtRate', wintypes.LONG),
-    ]
-
-class BATTERY_INFORMATION(ctypes.Structure):
-    _fields_ = [
-        ('Capabilities', wintypes.ULONG),
-        ('Technology', wintypes.CHAR),
-        ('Reserved', wintypes.CHAR * 3),
-        ('Chemistry', wintypes.CHAR * 4),
-        ('DesignedCapacity', wintypes.ULONG),
-        ('FullChargedCapacity', wintypes.ULONG),
-        ('DefaultAlert1', wintypes.ULONG),
-        ('DefaultAlert2', wintypes.ULONG),
-        ('CriticalBias', wintypes.ULONG),
-        ('CycleCount', wintypes.ULONG),
-    ]
-
-class BATTERY_WAIT_STATUS(ctypes.Structure):
-    _fields_ = [
-        ('BatteryTag', wintypes.ULONG),
-        ('Timeout', wintypes.ULONG),
-        ('PowerState', wintypes.ULONG),
-        ('LowCapacity', wintypes.ULONG),
-        ('HighCapacity', wintypes.ULONG),
-    ]
-
-class BATTERY_STATUS(ctypes.Structure):
-    _fields_ = [
-        ('PowerState', wintypes.ULONG),
-        ('Capacity', wintypes.ULONG),
-        ('Voltage', wintypes.ULONG),
-        ('Rate', wintypes.LONG),
-    ]
-
-# Load Windows APIs
-setupapi = ctypes.WinDLL('setupapi', use_last_error=True)
-kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-
-# Function prototypes
-SetupDiGetClassDevs = setupapi.SetupDiGetClassDevsA
-SetupDiGetClassDevs.argtypes = [
-    ctypes.POINTER(GUID),
-    wintypes.LPCSTR,
-    wintypes.HWND,
-    wintypes.DWORD
-]
-SetupDiGetClassDevs.restype = wintypes.HANDLE
-
-SetupDiEnumDeviceInterfaces = setupapi.SetupDiEnumDeviceInterfaces
-SetupDiEnumDeviceInterfaces.argtypes = [
-    wintypes.HANDLE,
-    ctypes.c_void_p,
-    ctypes.POINTER(GUID),
-    wintypes.DWORD,
-    ctypes.POINTER(SP_DEVICE_INTERFACE_DATA)
-]
-SetupDiEnumDeviceInterfaces.restype = wintypes.BOOL
-
-SetupDiGetDeviceInterfaceDetail = setupapi.SetupDiGetDeviceInterfaceDetailW
-SetupDiGetDeviceInterfaceDetail.argtypes = [
-    wintypes.HANDLE,
-    ctypes.POINTER(SP_DEVICE_INTERFACE_DATA),
-    ctypes.POINTER(SP_DEVICE_INTERFACE_DETAIL_DATA),
-    wintypes.DWORD,
-    ctypes.POINTER(wintypes.DWORD),
-    ctypes.c_void_p
-]
-SetupDiGetDeviceInterfaceDetail.restype = wintypes.BOOL
-
-SetupDiDestroyDeviceInfoList = setupapi.SetupDiDestroyDeviceInfoList
-SetupDiDestroyDeviceInfoList.argtypes = [wintypes.HANDLE]
-SetupDiDestroyDeviceInfoList.restype = wintypes.BOOL
-
-CreateFile = kernel32.CreateFileW
-CreateFile.argtypes = [
-    wintypes.LPCWSTR,
-    wintypes.DWORD,
-    wintypes.DWORD,
-    ctypes.c_void_p,
-    wintypes.DWORD,
-    wintypes.DWORD,
-    wintypes.HANDLE
-]
-CreateFile.restype = wintypes.HANDLE
-
-DeviceIoControl = kernel32.DeviceIoControl
-DeviceIoControl.argtypes = [
-    wintypes.HANDLE,
-    wintypes.DWORD,
-    wintypes.LPVOID,
-    wintypes.DWORD,
-    wintypes.LPVOID,
-    wintypes.DWORD,
-    ctypes.POINTER(wintypes.DWORD),
-    ctypes.c_void_p
-]
-DeviceIoControl.restype = wintypes.BOOL
-
-CloseHandle = kernel32.CloseHandle
-CloseHandle.argtypes = [wintypes.HANDLE]
-CloseHandle.restype = wintypes.BOOL
-
-def get_battery_info(device_path):
-    """Get battery information for a specific device"""
+# Battery detection methods
+class BatteryDevice:
+    """Represents a battery-capable device"""
+    def __init__(self, name: str, battery_level: int, charging: bool, 
+                 source: str, details: Dict = None):
+        self.name = name
+        self.battery_level = battery_level
+        self.charging = charging
+        self.source = source  # 'windows_api', 'hid', 'bluetooth_le'
+        self.details = details or {}
     
-    # Open device
-    h_battery = CreateFile(
-        device_path,
-        GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        None,
-        OPEN_EXISTING,
-        0,
-        None
-    )
+    def __str__(self):
+        charging_str = " (Charging)" if self.charging else ""
+        return f"{self.name}: {self.battery_level}%{charging_str} [{self.source}]"
+
+
+class UniversalBatteryMonitor:
+    """Universal battery monitor using multiple detection methods"""
     
-    if h_battery == INVALID_HANDLE_VALUE:
+    def __init__(self):
+        self.devices: List[BatteryDevice] = []
+    
+    def scan_all(self) -> List[BatteryDevice]:
+        """Scan for batteries using all available methods"""
+        self.devices = []
+        
+        print("Scanning for battery devices using all methods...")
+        print("=" * 60)
+        
+        # Method 1: Windows Battery API
+        if sys.platform == 'win32':
+            print("\n[1/3] Checking Windows Battery API...")
+            try:
+                windows_batteries = self._scan_windows_battery_api()
+                self.devices.extend(windows_batteries)
+                print(f"  Found {len(windows_batteries)} device(s)")
+            except Exception as e:
+                print(f"  Error: {e}")
+        
+        # Method 2: HID devices with vendor libraries
+        print("\n[2/3] Checking HID devices...")
+        try:
+            hid_batteries = self._scan_hid_batteries()
+            self.devices.extend(hid_batteries)
+            print(f"  Found {len(hid_batteries)} device(s)")
+        except Exception as e:
+            print(f"  Error: {e}")
+        
+        # Method 3: Bluetooth LE GATT
+        if HAS_BLEAK:
+            print("\n[3/3] Checking Bluetooth LE devices...")
+            try:
+                ble_batteries = asyncio.run(self._scan_bluetooth_le())
+                self.devices.extend(ble_batteries)
+                print(f"  Found {len(ble_batteries)} device(s)")
+            except Exception as e:
+                print(f"  Error: {e}")
+        else:
+            print("\n[3/3] Bluetooth LE scanning disabled (bleak not installed)")
+        
+        return self.devices
+    
+    def _scan_windows_battery_api(self) -> List[BatteryDevice]:
+        """Scan using Windows Battery API"""
+        from app_windows_battery import enumerate_batteries
+        
+        batteries = []
+        win_batteries = enumerate_batteries()
+        
+        for bat in win_batteries:
+            device = BatteryDevice(
+                name="System Battery",
+                battery_level=bat['percentage'],
+                charging=bat['charging'],
+                source='windows_api',
+                details=bat
+            )
+            batteries.append(device)
+        
+        return batteries
+    
+    def _scan_hid_batteries(self) -> List[BatteryDevice]:
+        """Scan HID devices and try to read battery using vendor libraries"""
+        batteries = []
+        
+        try:
+            # Get unique HID devices
+            devices_dict = {}
+            all_devices = hid.enumerate(0, 0)
+            print(f"  Found {len(all_devices)} total HID interfaces")
+            
+            for device in all_devices:
+                vid = device.get('vendor_id', 0)
+                pid = device.get('product_id', 0)
+                key = f"{vid:04x}:{pid:04x}"
+                
+                if key not in devices_dict:
+                    devices_dict[key] = {
+                        'vid': vid,
+                        'pid': pid,
+                        'manufacturer': device.get('manufacturer_string', ''),
+                        'product': device.get('product_string', ''),
+                        'path': device.get('path', b''),
+                    }
+            
+            print(f"  Unique devices: {len(devices_dict)}")
+            
+            # Filter for wireless devices
+            wireless_keywords = ['wireless', 'bluetooth', 'steelseries', 'logitech', 
+                               'razer', 'corsair', 'mouse', 'keyboard', 'headset']
+            
+            wireless_devices = {
+                key: dev for key, dev in devices_dict.items()
+                if any(kw in dev['product'].lower() or kw in dev['manufacturer'].lower() 
+                       for kw in wireless_keywords)
+            }
+            
+            print(f"  Wireless devices: {len(wireless_devices)}")
+            
+            # Try to read battery from known vendors
+            for key, device in wireless_devices.items():
+                battery = None
+                device_name = f"{device['manufacturer']} {device['product']}".strip()
+                print(f"  Checking: {device_name} ({key})")
+                
+                # SteelSeries devices
+                if device['vid'] == 0x1038:
+                    print(f"    -> Trying SteelSeries protocol...")
+                    battery = self._try_steelseries_battery(device)
+                    if battery:
+                        print(f"    -> Success!")
+                    else:
+                        print(f"    -> Failed")
+                
+                # Logitech devices
+                elif device['vid'] == 0x046d:
+                    print(f"    -> Trying Logitech protocol...")
+                    battery = self._try_logitech_battery(device)
+                
+                # Razer devices
+                elif device['vid'] == 0x1532:
+                    print(f"    -> Trying Razer protocol...")
+                    battery = self._try_razer_battery(device)
+                
+                # Corsair devices
+                elif device['vid'] == 0x1b1c:
+                    print(f"    -> Trying Corsair protocol...")
+                    battery = self._try_corsair_battery(device)
+                else:
+                    print(f"    -> Unknown vendor, skipping")
+                
+                if battery:
+                    batteries.append(battery)
+            
+        except Exception as e:
+            print(f"  Error scanning HID: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return batteries
+    
+    def _try_steelseries_battery(self, device: Dict) -> Optional[BatteryDevice]:
+        """Try to read battery from SteelSeries device"""
+        try:
+            import rivalcfg
+            print(f"      rivalcfg imported successfully")
+            
+            try:
+                mouse = rivalcfg.get_first_mouse()
+                print(f"      get_first_mouse() returned: {mouse}")
+                
+                if mouse:
+                    try:
+                        # Use the battery property (not a method!)
+                        battery_info = mouse.battery
+                        print(f"      Battery info: {battery_info}")
+                        
+                        if battery_info and battery_info.get('level') is not None:
+                            battery_level = battery_info['level']
+                            is_charging = battery_info.get('is_charging', False)
+                            
+                            print(f"      Battery level: {battery_level}%")
+                            print(f"      Charging: {is_charging}")
+                            
+                            mouse.close()
+                            
+                            return BatteryDevice(
+                                name=device['product'] or f"SteelSeries {device['vid']:04x}:{device['pid']:04x}",
+                                battery_level=battery_level,
+                                charging=is_charging or False,
+                                source='hid_steelseries',
+                                details=device
+                            )
+                        else:
+                            print(f"      Battery info not available (mouse may be off)")
+                            mouse.close()
+                    except AttributeError as e:
+                        print(f"      AttributeError: {e}")
+                        mouse.close()
+                    except Exception as e:
+                        print(f"      Error reading battery: {e}")
+                        mouse.close()
+                else:
+                    print(f"      No mouse found by rivalcfg")
+            except Exception as e:
+                print(f"      Error calling get_first_mouse(): {e}")
+                
+        except ImportError:
+            print(f"      rivalcfg not installed (pip install rivalcfg)")
+        except Exception as e:
+            print(f"      Unexpected error: {e}")
+        
         return None
     
-    try:
-        # Get battery tag
-        battery_tag = wintypes.ULONG(0)
-        dw_out = wintypes.DWORD()
-        dw_wait = wintypes.DWORD(0)
+    def _try_logitech_battery(self, device: Dict) -> Optional[BatteryDevice]:
+        """Try to read battery from Logitech device"""
+        # Logitech uses HID++ protocol
+        # Would need solaar library: pip install solaar
+        try:
+            # This is a placeholder - solaar has complex setup
+            # For now, just return None
+            pass
+        except:
+            pass
         
-        if not DeviceIoControl(
-            h_battery,
-            IOCTL_BATTERY_QUERY_TAG,
-            ctypes.byref(dw_wait),
-            ctypes.sizeof(dw_wait),
-            ctypes.byref(battery_tag),
-            ctypes.sizeof(battery_tag),
-            ctypes.byref(dw_out),
-            None
-        ):
-            return None
+        return None
+    
+    def _try_razer_battery(self, device: Dict) -> Optional[BatteryDevice]:
+        """Try to read battery from Razer device"""
+        # Razer devices might use openrazer
+        # This is Linux-focused, so skip for now
+        return None
+    
+    def _try_corsair_battery(self, device: Dict) -> Optional[BatteryDevice]:
+        """Try to read battery from Corsair device"""
+        # Corsair uses CUE SDK
+        # Complex setup, skip for now
+        return None
+    
+    async def _scan_bluetooth_le(self) -> List[BatteryDevice]:
+        """Scan Bluetooth LE devices for battery service"""
+        batteries = []
         
-        if battery_tag.value == 0:
-            return None
+        # Standard Bluetooth Battery Service UUID
+        BATTERY_SERVICE_UUID = "0000180f-0000-1000-8000-00805f9b34fb"
+        BATTERY_LEVEL_CHAR_UUID = "00002a19-0000-1000-8000-00805f9b34fb"
         
-        # Query battery information
-        bqi = BATTERY_QUERY_INFORMATION()
-        bqi.BatteryTag = battery_tag.value
-        bqi.InformationLevel = 0  # BatteryInformation
+        try:
+            # Scan for BLE devices
+            devices = await BleakScanner.discover(timeout=5.0, return_adv=True)
+            
+            for address, (device, adv_data) in devices.items():
+                # Check if device advertises battery service
+                service_uuids = adv_data.service_uuids if hasattr(adv_data, 'service_uuids') else []
+                
+                has_battery = any(
+                    uuid.lower() in [BATTERY_SERVICE_UUID.lower(), "180f"]
+                    for uuid in service_uuids
+                )
+                
+                if has_battery or True:  # Try all devices for now
+                    try:
+                        async with BleakClient(address, timeout=10.0) as client:
+                            # Try to read battery characteristic
+                            try:
+                                battery_data = await client.read_gatt_char(BATTERY_LEVEL_CHAR_UUID)
+                                battery_level = int.from_bytes(battery_data, byteorder='little')
+                                
+                                if 0 <= battery_level <= 100:
+                                    device_name = adv_data.local_name or device.name or f"BLE Device {address}"
+                                    
+                                    batteries.append(BatteryDevice(
+                                        name=device_name,
+                                        battery_level=battery_level,
+                                        charging=False,  # BLE doesn't always report charging
+                                        source='bluetooth_le',
+                                        details={'address': address}
+                                    ))
+                            except Exception:
+                                # Device doesn't have battery characteristic
+                                pass
+                    except Exception:
+                        # Could not connect to device
+                        pass
+        except Exception as e:
+            print(f"  BLE scan error: {e}")
         
-        bi = BATTERY_INFORMATION()
-        
-        if not DeviceIoControl(
-            h_battery,
-            IOCTL_BATTERY_QUERY_INFORMATION,
-            ctypes.byref(bqi),
-            ctypes.sizeof(bqi),
-            ctypes.byref(bi),
-            ctypes.sizeof(bi),
-            ctypes.byref(dw_out),
-            None
-        ):
-            return None
-        
-        # Check if it's a system battery (not UPS)
-        if not (bi.Capabilities & BATTERY_SYSTEM_BATTERY):
-            return None
-        
-        # Query battery status
-        bws = BATTERY_WAIT_STATUS()
-        bws.BatteryTag = battery_tag.value
-        
-        bs = BATTERY_STATUS()
-        
-        if not DeviceIoControl(
-            h_battery,
-            IOCTL_BATTERY_QUERY_STATUS,
-            ctypes.byref(bws),
-            ctypes.sizeof(bws),
-            ctypes.byref(bs),
-            ctypes.sizeof(bs),
-            ctypes.byref(dw_out),
-            None
-        ):
-            return None
-        
-        # Calculate percentage
-        if bi.FullChargedCapacity == 0:
-            percentage = 0
-        else:
-            percentage = (bs.Capacity * 100) // bi.FullChargedCapacity
-        
-        # Determine charging status
-        is_charging = bool(bs.PowerState & BATTERY_POWER_ON_LINE)
-        
-        # Get chemistry (battery type)
-        chemistry = bi.Chemistry[:4].decode('ascii', errors='ignore').strip('\x00')
-        
-        return {
-            'percentage': percentage,
-            'charging': is_charging,
-            'capacity': bs.Capacity,
-            'full_capacity': bi.FullChargedCapacity,
-            'voltage': bs.Voltage,
-            'chemistry': chemistry,
-            'device_path': device_path
-        }
-        
-    finally:
-        CloseHandle(h_battery)
+        return batteries
 
-def enumerate_batteries():
-    """Enumerate all battery devices and return their info"""
-    
-    batteries = []
-    
-    # Get device information set for all battery devices
-    h_dev = SetupDiGetClassDevs(
-        ctypes.byref(GUID_BATTERY),
-        None,
-        None,
-        DIGCF_PRESENT | DIGCF_DEVICEINTERFACE
-    )
-    
-    if h_dev == INVALID_HANDLE_VALUE:
-        raise ctypes.WinError(ctypes.get_last_error())
-    
-    try:
-        # Enumerate all battery devices
-        for i in range(10):  # Limit to 10 devices
-            did = SP_DEVICE_INTERFACE_DATA()
-            did.cbSize = ctypes.sizeof(SP_DEVICE_INTERFACE_DATA)
-            
-            if not SetupDiEnumDeviceInterfaces(
-                h_dev,
-                None,
-                ctypes.byref(GUID_BATTERY),
-                i,
-                ctypes.byref(did)
-            ):
-                break
-            
-            # Get required size for device detail
-            required_size = wintypes.DWORD()
-            SetupDiGetDeviceInterfaceDetail(
-                h_dev,
-                ctypes.byref(did),
-                None,
-                0,
-                ctypes.byref(required_size),
-                None
-            )
-            
-            # Get device detail
-            pdidd = SP_DEVICE_INTERFACE_DETAIL_DATA()
-            pdidd.cbSize = ctypes.sizeof(ctypes.c_ulong) + ctypes.sizeof(ctypes.c_wchar)
-            
-            if SetupDiGetDeviceInterfaceDetail(
-                h_dev,
-                ctypes.byref(did),
-                ctypes.byref(pdidd),
-                ctypes.sizeof(pdidd),
-                ctypes.byref(required_size),
-                None
-            ):
-                # Get battery info for this device
-                info = get_battery_info(pdidd.DevicePath)
-                if info:
-                    batteries.append(info)
-        
-    finally:
-        SetupDiDestroyDeviceInfoList(h_dev)
-    
-    return batteries
 
-def main():    
-    try:
-        batteries = enumerate_batteries()
+# Standalone Windows Battery module
+if sys.platform == 'win32':
+    import app_windows_battery
+else:
+    class app_windows_battery:
+        @staticmethod
+        def enumerate_batteries():
+            return []
+
+
+def main():
+    if MISSING_DEPS:
+        for dep in MISSING_DEPS:
+            print(f"  - {dep}")
+        print("\nInstall with: pip install " + " ".join(MISSING_DEPS))
+    
+    monitor = UniversalBatteryMonitor()
+    devices = monitor.scan_all()
+    
+    print("\n" + "=" * 60)
+    print("RESULTS")
+    print("=" * 60)
+    
+    if not devices:
+        print("\nNo battery devices found.")
+    else:
+        print(f"\n Found {len(devices)} battery device(s):\n")
         
-        if not batteries:
-            print("\nNo battery devices found.")
-            return
-        
-        print(f"\nFound {len(batteries)} battery device(s):\n")
-        
-        for idx, battery in enumerate(batteries, 1):
-            print(f"Battery #{idx}")
-            print(f"  Device Path: {battery['device_path']}")
-            print(f"  Battery Level: {battery['percentage']}%")
-            print(f"  Charging: {'Yes' if battery['charging'] else 'No'}")
-            print()
-        
-    except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
+        for i, device in enumerate(devices, 1):
+            print(f"{i}. {device}")
+            if device.details:
+                for key, value in device.details.items():
+                    if key not in ['device_path', 'path']:
+                        print(f"     {key}: {value}")
+    
+    print("\n" + "=" * 60)
+
 
 if __name__ == "__main__":
     main()
