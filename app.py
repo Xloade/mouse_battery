@@ -33,13 +33,10 @@ class BatteryDevice:
 
 
 class UniversalBatteryMonitor:
-    """Universal battery monitor using multiple detection methods"""
-    
     def __init__(self):
         self.devices: List[BatteryDevice] = []
     
     def scan_all(self) -> List[BatteryDevice]:
-        """Scan for batteries using all available methods"""
         self.devices = []
         try:
             hid_batteries = self._scan_hid_batteries()
