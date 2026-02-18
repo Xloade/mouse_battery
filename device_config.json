@@ -1,0 +1,12 @@
+{
+  "selected_devices": [
+    {
+      "id": "1038:1838",
+      "name": "SteelSeries Aerox 3 Wireless",
+      "type": " Mouse",
+      "vid": 4152,
+      "pid": 6200
+    }
+  ],
+  "update_interval": 60
+}

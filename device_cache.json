@@ -1,0 +1,24 @@
+{
+  "timestamp": 1771371269.1402037,
+  "devices": [
+    {
+      "name": "SteelSeries Aerox 3 Wireless",
+      "battery_level": 70,
+      "charging": false,
+      "source": "hid_steelseries",
+      "details": {
+        "vid": 4152,
+        "pid": 6200,
+        "capabilities": {
+          "mouse": true,
+          "keyboard": true,
+          "gamepad": false,
+          "consumer_control": true,
+          "digitizer": false
+        },
+        "manufacturer": "SteelSeries",
+        "product": "SteelSeries Aerox 3 Wireless"
+      }
+    }
+  ]
+}

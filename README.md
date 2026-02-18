@@ -1,27 +1,33 @@
-# Mouse Battery Monitor
+# Wireless Device Battery Monitor
 
-A lightweight Windows system tray application that displays the battery level of your SteelSeries wireless mouse.
+A lightweight Windows system tray application that displays the battery level of your wireless devices (mice, keyboards, gamepads, headsets).
 
 ## Features
 
-**Real-time battery monitoring** - See your mouse battery level at a glance  
-**System tray integration** - Runs quietly in your system tray  
-**Charging status** - Shows when your mouse is charging  
-**Auto-start support** - Optionally launch on Windows startup  
-**Lightweight** - Minimal system resource usage  
-**No bloatware** - Get battery info without installing SteelSeries GG
+✨ **Multi-device support** - Monitor multiple devices simultaneously  
+🖱️ **Device-specific icons** - Mouse, keyboard, gamepad, and headset icons  
+📊 **Large, readable battery numbers** - Easy to see at a glance  
+🔋 **Real-time monitoring** - Automatic battery updates  
+⚡ **Charging status indicator** - Shows when devices are charging  
+🎨 **Color-coded levels** - Green (good), Orange (medium), Red (low)  
+🚀 **Easy setup** - GUI configuration with progress tracking  
+💾 **Persistent settings** - Remembers your device selection  
+🏃 **Auto-start support** - Optionally launch on Windows startup  
+🪶 **Lightweight** - Minimal system resource usage
 
 ## Supported Devices
 
-This application uses the [rivalcfg](https://github.com/flozz/rivalcfg) library, which supports:
+### Fully Supported
+- **SteelSeries** wireless mice (via rivalcfg library)
+  - Aerox 3 Wireless, Rival 3 Wireless, Rival 650 Wireless, and more
+  - [→ Full list of SteelSeries devices](https://flozz.github.io/rivalcfg/devices/index.html)
 
-- SteelSeries Aerox 3 Wireless
-- SteelSeries Rival 3 Wireless
-- SteelSeries Rival 650 Wireless
-- SteelSeries Sensei Ten Wireless
-- And many more SteelSeries wireless mice
-
-[→ See full list of supported devices](https://flozz.github.io/rivalcfg/devices/index.html)
+### Experimental Support
+- **Logitech** wireless devices (HID++ protocol)
+- **Razer** wireless devices (OpenRazer or direct HID)
+- **Microsoft** Xbox wireless controllers
+- **Corsair** wireless devices (limited)
+- Other HID battery-capable devices
 
 ## Installation
 
@@ -32,7 +38,7 @@ This application uses the [rivalcfg](https://github.com/flozz/rivalcfg) library,
 
 ### Quick Install
 
-1. **Clone the repository**
+1. **Clone or download the repository**
    ```bash
    git clone https://github.com/pasrtelaria/mouse_battery.git
    cd mouse_battery
@@ -43,10 +49,68 @@ This application uses the [rivalcfg](https://github.com/flozz/rivalcfg) library,
    pip install -r requirements.txt
    ```
 
-3. **Run the application**
+3. **Run the launcher** (Easiest way!)
    ```bash
-   python mouse_battery_tray.py
+   python start.py
    ```
+   Or just double-click `start.py`
+
+## First Time Setup
+
+When you run `start.py` for the first time:
+
+1. **Automatic GUI Launch**: Device selection window opens automatically
+2. **Progress Dialog**: Shows scanning progress with ETA (~60 seconds)
+3. **Select Devices**: Check the wireless devices you want to monitor
+4. **Save**: Click "💾 Save & Apply"
+5. **Auto-Start**: Tray icons appear automatically - Done! ✨
+
+### Visual Guide
+
+**Step 1: Loading Dialog**
+```
+┌─────────────────────────────────────────┐
+│  🔍 Scanning for Wireless Devices...   │
+│  [████████████░░░░░░░░░░░] 65%        │
+│  Checking wireless indicators...        │
+│  Estimated time remaining: ~22 seconds  │
+└─────────────────────────────────────────┘
+```
+
+**Step 2: Device Selection**
+- See all detected wireless devices
+- Battery levels and charging status
+- Check boxes for devices to monitor
+- Device type icons (🖱️ 🎮 ⌨️ 🎧)
+
+**Step 3: Tray Icons**
+- One icon per selected device
+- Shows device type + battery %
+- Color-coded by battery level
+- Right-click for refresh/settings
+
+## Usage
+
+### Running the Monitor
+
+**Recommended:**
+```bash
+python start.py
+```
+
+**Alternative:**
+```bash
+python mouse_battery_tray.py
+```
+
+### Changing Monitored Devices
+
+Run the settings GUI:
+```bash
+python device_settings_gui.py
+```
+
+Then restart the tray monitor.
 
 ## Usage
 
