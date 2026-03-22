@@ -160,6 +160,7 @@ class UniversalBatteryMonitor:
                             0x1532,  # Razer
                             0x1b1c,  # Corsair
                             0x045e,  # Microsoft
+                            0x3434,  # Keychron
                         ]
                         is_known_vendor = vid in known_wireless_vendors
                         
@@ -192,6 +193,10 @@ class UniversalBatteryMonitor:
                 # Razer devices
                 elif candidate['vid'] == 0x1532:
                     battery = self._try_razer_battery(candidate)
+
+                # Razer devices
+                elif candidate['vid'] == 0x3434:
+                    battery = self._try_keychron_battery_hid(candidate)
     
                 if battery:
                     batteries.append(battery)
@@ -446,6 +451,77 @@ class UniversalBatteryMonitor:
             
         except Exception as e:
             print(f"      Error opening Razer device: {e}")
+        
+        return None
+
+    def _try_keychron_battery_hid(self, candidate: Dict) -> Optional[BatteryDevice]:
+        """Try to read battery from Keychron device using direct HID protocol"""
+        device_info = candidate['device_info']
+        device_name = device_info.get('product_string', '') or \
+                     f"Keychron {candidate['vid']:04x}:{candidate['pid']:04x}"
+        try:
+            devices = hid.enumerate(candidate['vid'], candidate['pid'])
+
+            for device in devices:
+                if device.get('interface_number')==4:
+                    path = device.get('path')
+            if path:
+
+                device = hid.device()
+                device.open_path(path)
+                
+                print(f"      Attempting Keychron HID battery query...")
+                
+                try:
+                    # Send the command
+                    device.write(bytes.fromhex('b306' + '00' * 62))
+                    
+                    # Read response
+                    response = device.read(128, 1000)
+                    print(len(response))
+                    if response and len(response) >= 9:
+                
+                        # Battery level is in byte 9 (0-255, convert to percentage)
+                        battery_level = response[20] if len(response) > 20 else 0
+                        # battery_level = int((battery_raw / 255.0) * 100)
+                        
+                        # Charging status might be in byte 10
+                        is_charging = battery_level > 100
+
+                        battery_level = min(battery_level, 100)
+                        
+                        if 0 <= battery_level:
+                            print(f"      Battery level: {battery_level}%")
+                            print(f"      Charging: {is_charging}")
+                            
+                            device.close()
+                            
+                            return BatteryDevice(
+                                name=device_name,
+                                battery_level=battery_level,
+                                charging=is_charging,
+                                source='hid_razer',
+                                details={
+                                    'vid': candidate['vid'],
+                                    'pid': candidate['pid'],
+                                    'capabilities': candidate['capabilities'],
+                                    'manufacturer': device_info.get('manufacturer_string', ''),
+                                    'product': device_info.get('product_string', '')
+                                }
+                            )
+                
+                    else:
+                        print(f"      No response from Keychron device")
+                        
+                except Exception as e:
+                    print(f"      Keychron HID protocol error: {e}")
+            else:
+                print(f"      No Keykron path")
+            
+            device.close()
+            
+        except Exception as e:
+            print(f"      Error opening Keychron device: {e}")
         
         return None
 
