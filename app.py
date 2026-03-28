@@ -481,14 +481,13 @@ class UniversalBatteryMonitor:
                     print(len(response))
                     if response and len(response) >= 9:
                 
-                        # Battery level is in byte 9 (0-255, convert to percentage)
                         battery_level = response[20] if len(response) > 20 else 0
-                        # battery_level = int((battery_raw / 255.0) * 100)
                         
-                        # Charging status might be in byte 10
-                        is_charging = battery_level > 100
-
-                        battery_level = min(battery_level, 100)
+                        # Charging status might be in byte 8
+                        is_charging = battery_level > 127
+                        print(battery_level)
+                        print(battery_level)
+                        battery_level = (battery_level - 128) if is_charging else battery_level
                         
                         if 0 <= battery_level:
                             print(f"      Battery level: {battery_level}%")
